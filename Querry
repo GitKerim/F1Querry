@@ -1,0 +1,94 @@
+--Creates temporary table that cross references races with race results in last 3 years
+--Lists all of the drivers that have raced in last 3 years, and still have active racing number and pro licence.
+
+Select Races.RaceId,Year,Name,Date,DriverId into #temp_RaceResults
+From Races
+Join Results
+On Races.RaceId = Results.RaceId
+Where date > DATEADD(YEAR, -3, getdate());
+
+Select Forename,Surname,Number
+From Drivers
+Join #temp_RaceResults rr
+On Drivers.DriverId = rr.DriverId
+Where Number not like '%\N%' 
+Group by Forename,Surname,Number
+Order by cast(number as int)
+
+
+
+
+
+--Creates temporary table that cross references races with race results // Converted to regular table for view export
+
+
+drop table if exists adtcircuits
+Select races.raceId,Name,circuitId,constructorId,driverId,positionOrder into adtcircuits
+From Races
+Join Results
+On Races.RaceId = Results.RaceId
+
+
+--Creates temporary table for number of races on same track // Converted to regular table for view export
+
+
+drop table if exists numberofraces
+Select distinct circuits.circuitId,circuits.Name,driverId,
+count(circuits.circuitId) as NumberOfRaces into numberofraces
+From circuits 
+Join adtcircuits adtc
+On circuits.circuitId = adtc.circuitId
+group by circuits.Name,driverId,circuits.circuitId
+
+select*
+from numberofraces
+
+
+-- Using CTE to partition by positions
+
+
+With FullData(circuitId,Name,driverId,AvgPos)
+As
+(
+Select  distinct circuits.circuitid,circuits.Name,driverId,
+Avg(positionOrder) over (partition by circuits.circuitid order by driverid) as AvgPos
+From circuits
+Join adtcircuits adtc
+On circuits.circuitId = adtc.circuitId
+)
+
+
+--Using Join to combine 3 tables - resulting in table that shows average finishing position for each track for each driver
+
+
+Select Forename, Surname, AvgPos as AvgFinishingPos, fd.Name, NumberOfRaces
+From fulldata FD
+Join Drivers
+On FD.DriverId = Drivers.DriverId
+join numberofraces NOR
+On nor.circuitId = FD.circuitId and nor.driverId = drivers.driverId
+group by FD.DriverId, forename, surname, AvgPos, fd.name, NumberOfRaces
+order by FD.DriverId, 3
+
+
+--Creating view for data visuallization
+
+
+create view AvgFinishingPos as 
+With FullData(circuitId,Name,driverId,AvgPos)
+As
+(
+Select  distinct circuits.circuitid,circuits.Name,driverId,
+Avg(positionOrder) over (partition by circuits.circuitid order by driverid) as AvgPos
+From circuits
+Join adtcircuits adtc
+On circuits.circuitId = adtc.circuitId
+)
+
+Select Forename, Surname, AvgPos as AvgFinishingPos, fd.Name, NumberOfRaces
+From fulldata FD
+Join Drivers
+On FD.DriverId = Drivers.DriverId
+join numberofraces NOR
+On nor.circuitId = FD.circuitId and nor.driverId = drivers.driverId
+group by FD.DriverId, forename, surname, AvgPos, fd.name, NumberOfRaces
